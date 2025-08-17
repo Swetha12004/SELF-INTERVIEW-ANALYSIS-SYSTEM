@@ -1,0 +1,10 @@
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+model = AutoModelForCausalLM.from_pretrained("PrunaAI/harry767701-AI_1611_llama3.2_3B_Instruct_AI_Interview_augmentdata-bnb-8bit-smashed", trust_remote_code=True, device_map='auto')
+tokenizer = AutoTokenizer.from_pretrained("harry767701/AI_1611_llama3.2_3B_Instruct_AI_Interview_augmentdata")
+
+input_ids = tokenizer("What is the color of prunes?,", return_tensors='pt').to(model.device)["input_ids"]
+
+outputs = model.generate(input_ids, max_new_tokens=216)
+tokenizer.decode(outputs[0])

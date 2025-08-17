@@ -1,0 +1,304 @@
+from flask import Flask, render_template, Response, request, jsonify
+import cv2
+import numpy as np
+import torch
+import torchaudio
+import speech_recognition as sr
+import threading
+import wave
+import pyaudio
+import tempfile
+import time
+from collections import Counter
+from fer import FER
+from speechbrain.inference.interfaces import foreign_class
+import os
+import pandas as pd
+
+app = Flask(__name__)
+
+# Load voice emotion classifier
+classifier = foreign_class(
+    source="speechbrain/emotion-recognition-wav2vec2-IEMOCAP",
+    pymodule_file="custom_interface.py",
+    classname="CustomEncoderWav2vec2Classifier"
+)
+
+# Load facial expression recognition model
+detector = FER(mtcnn=True)
+
+# Load Haar Cascade for face detection
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+# Load the emotion job suitability dataset (Ensure correct path)
+print("\n=== Dataset Loading Check ===")
+df = pd.read_csv("C:/FACIAL/emotion_job_suitability_dataset.csv", encoding="utf-8")
+print("Original columns:", df.columns.tolist())
+df.columns = df.columns.str.strip().str.lower()
+print("Processed columns:", df.columns.tolist())
+print("\nFirst few rows of dataset:")
+print(df.head())
+print("\nUnique emotions in dataset:", df['emotion'].unique())
+
+# Clean the emotion column - remove any leading/trailing spaces and convert to lowercase
+df['emotion'] = df['emotion'].str.strip().str.lower()
+
+# Remove any rows with NaN values
+df = df.dropna()
+
+print("Dataset loaded successfully:")
+print("Columns:", df.columns.tolist())
+print("Available emotions:", df['emotion'].unique().tolist())
+
+# Update the emotion mapping to match your requirements
+emotion_map = {
+    "happy": "confidence",
+    "sad": "empathy",
+    "angry": "decisiveness",
+    "surprise": "creativity",
+    "disgust": "attention_to_detail",
+    "fear": "vigilance",
+    "neutral": "stability"
+}
+
+# Apply mapping
+df["emotion"] = df["emotion"].map(emotion_map)
+
+# Video Capture
+camera = cv2.VideoCapture(0)
+recording = False
+frames = []
+start_time = None
+
+# Audio Recording Setup
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+RATE = 44100
+CHUNK = 1024
+audio = pyaudio.PyAudio()
+stream = None
+audio_frames = []
+
+# Start Video & Audio Recording
+@app.route('/start_recording', methods=['GET'])
+def start_recording():
+    global recording, frames, stream, audio_frames, start_time
+    recording = True
+    frames = []
+    audio_frames = []
+    start_time = time.time()
+    stream = audio.open(format=FORMAT, channels=CHANNELS,
+                        rate=RATE, input=True, frames_per_buffer=CHUNK)
+    threading.Thread(target=record_audio).start()
+    return jsonify({"message": "Recording started"})
+
+# Stop Video & Audio Recording and Process
+@app.route('/stop_recording', methods=['GET'])
+def stop_recording():
+    global recording, stream, start_time, frames
+    recording = False
+    
+    print("\n=== Starting Recording Analysis ===")
+    
+    if stream:
+        stream.stop_stream()
+        stream.close()
+
+    try:
+        # Process audio
+        print("\nProcessing audio...")
+        audio_path = save_audio()
+        voice_emotion = analyze_voice_emotion(audio_path)
+        speech_text = speech_to_text(audio_path)
+        
+        print(f"Voice emotion: {voice_emotion}")
+        print(f"Speech text: {speech_text}")
+        
+        # Process video
+        print("\nProcessing video...")
+        facial_emotion, job_suitability = analyze_facial_emotions_from_video(frames)
+        
+        # Ensure job_suitability is not empty
+        if not job_suitability:
+            print("Warning: Empty job suitability scores")
+            job_suitability = {
+                "sales": 0,
+                "management": 0,
+                "technical": 0,
+                "creative": 0,
+                "customer_service": 0
+            }
+        
+        print("\n=== Final Results ===")
+        print(f"Voice Emotion: {voice_emotion}")
+        print(f"Facial Emotion: {facial_emotion}")
+        print(f"Job Suitability: {job_suitability}")
+        
+        response_data = {
+            "voice_emotion": voice_emotion,
+            "facial_emotion": facial_emotion,
+            "job_role_suitability": job_suitability,  # Make sure this matches the frontend key
+            "speech_text": speech_text
+        }
+        
+        print("\nSending response:", response_data)
+        return jsonify(response_data)
+        
+    except Exception as e:
+        print(f"Error in stop_recording: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
+# Record Audio in Background
+def record_audio():
+    global recording, stream, audio_frames
+    while recording:
+        data = stream.read(CHUNK, exception_on_overflow=False)
+        audio_frames.append(data)
+
+# Save Audio to Temp File
+def save_audio():
+    try:
+        temp_audio_path = os.path.join(tempfile.gettempdir(), "recorded_audio.wav")
+        with wave.open(temp_audio_path, 'wb') as wf:
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(audio.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b''.join(audio_frames))
+        print(f"Audio saved successfully at {temp_audio_path}")
+        return temp_audio_path
+    except Exception as e:
+        print(f"Error saving audio: {e}")
+        return None
+
+# Speech-to-Text Function
+def speech_to_text(audio_path):
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(audio_path) as source:
+        audio = recognizer.record(source)
+    try:
+        return recognizer.recognize_google(audio)
+    except sr.UnknownValueError:
+        return ""
+    except sr.RequestError as e:
+        print(f"Speech recognition error: {e}")
+        return ""
+
+# Analyze Voice Emotion
+def analyze_voice_emotion(audio_path):
+    try:
+        audio_path = os.path.normpath(audio_path)
+        if not os.path.exists(audio_path):
+            print(f"Audio file not found at: {audio_path}")
+            return "stability"  # Return mapped version of neutral
+            
+        _, _, _, text_lab = classifier.classify_file(audio_path)
+        # Map the voice emotion to your dataset emotion
+        mapped_emotion = emotion_map.get(text_lab.lower(), "stability")
+        return mapped_emotion
+    except Exception as e:
+        print(f"Error analyzing voice emotion: {e}")
+        return "stability"  # Return mapped version of neutral
+
+def analyze_facial_emotions_from_video(frames):
+    print("\n=== Starting Facial Emotion Analysis ===")
+    if not frames:
+        print("Error: No frames to analyze")
+        return "stability", {}
+    
+    print(f"Processing {len(frames)} frames")
+    emotion_counts = Counter()
+    
+    for i, frame in enumerate(frames):
+        try:
+            emotion_analysis = detector.detect_emotions(cv2.resize(frame, (640, 480)))
+            if emotion_analysis and len(emotion_analysis) > 0:
+                emotions_dict = emotion_analysis[0]["emotions"]
+                dominant_emotion = max(emotions_dict.items(), key=lambda x: x[1])[0]
+                emotion_counts[dominant_emotion.lower()] += 1
+                print(f"Frame {i}: Detected {dominant_emotion}")
+        except Exception as e:
+            print(f"Error processing frame {i}: {str(e)}")
+    
+    if not emotion_counts:
+        print("Warning: No emotions detected in any frames")
+        return "stability", {}
+    
+    print("\nEmotion counts:", dict(emotion_counts))
+    detected_emotion = emotion_counts.most_common(1)[0][0].lower()
+    print(f"Raw detected emotion: {detected_emotion}")
+    
+    # Map the emotion
+    mapped_emotion = emotion_map.get(detected_emotion, "stability")
+    print(f"Mapped to: {mapped_emotion}")
+    
+    # Find matching row
+    print("\n=== Looking up Job Suitability ===")
+    print(f"Looking for emotion '{mapped_emotion}' in dataset")
+    matching_rows = df[df['emotion'].str.lower() == mapped_emotion.lower()]
+    print(f"Found {len(matching_rows)} matching rows")
+    
+    if not matching_rows.empty:
+        job_suitability = {}
+        matching_row = matching_rows.iloc[0]
+        
+        # Get job columns
+        job_columns = [col for col in df.columns if col != 'emotion']
+        print("\nProcessing job columns:", job_columns)
+        
+        for job in job_columns:
+            try:
+                raw_score = matching_row[job]
+                print(f"\nProcessing {job}:")
+                print(f"Raw score: {raw_score}")
+                
+                score = float(raw_score)
+                if score > 1:
+                    final_score = round(score, 2)
+                else:
+                    final_score = round(score * 100, 2)
+                
+                print(f"Final score: {final_score}")
+                job_suitability[job] = final_score
+                
+            except Exception as e:
+                print(f"Error processing {job}: {str(e)}")
+                continue
+        
+        print("\nFinal job suitability scores:", job_suitability)
+        return mapped_emotion, job_suitability
+    else:
+        print(f"Error: No matching emotion found in dataset for '{mapped_emotion}'")
+        return mapped_emotion, {}
+
+# Video Streaming with Face Focus
+@app.route('/video_feed')
+def video_feed():
+    def generate():
+        while True:
+            success, frame = camera.read()
+            if not success:
+                breakj
+            else:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+
+                height, width = frame.shape[:2]
+                box_x, box_y, box_w, box_h = width // 4, height // 4, width // 2, height // 2
+                cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (0, 255, 0), 2)
+
+                if len(faces) == 0:
+                    cv2.putText(frame, 'Face Not Found', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+            ret, buffer = cv2.imencode('.jpg', frame)
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+# Main Route
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+if __name__ == "__main__":
+    app.run(debug=True)

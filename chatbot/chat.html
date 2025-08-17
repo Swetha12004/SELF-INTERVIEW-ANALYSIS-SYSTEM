@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Interview Assistant</title>
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .chat-box {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .bot-message {
+            background: #e3f2fd;
+            margin-right: 20%;
+        }
+        .user-message {
+            background: #f5f5f5;
+            margin-left: 20%;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #userInput {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        .typing-indicator {
+            display: none;
+            color: #666;
+            font-style: italic;
+            margin: 5px 0;
+        }
+        .question-suggestions {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .suggestion-btn {
+            margin: 5px;
+            padding: 8px 15px;
+            background: #e3f2fd;
+            border: 1px solid #2196F3;
+            color: #1976D2;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        
+        .suggestion-btn:hover {
+            background: #bbdefb;
+        }
+        
+        .structured-response {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .response-section {
+            margin: 10px 0;
+        }
+        
+        .response-header {
+            font-weight: bold;
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>AI Interview Assistant</h1>
+        
+        <div class="question-suggestions">
+            <h3>Sample Questions:</h3>
+            <button class="suggestion-btn" onclick="askQuestion('Tell me about your experience with Python programming.')">Python Experience</button>
+            <button class="suggestion-btn" onclick="askQuestion('How do you handle difficult team situations?')">Team Handling</button>
+            <button class="suggestion-btn" onclick="askQuestion('Describe a challenging project you worked on.')">Project Experience</button>
+        </div>
+        
+        <div class="chat-box" id="chatBox">
+            <!-- Initial structured message -->
+            <div class="message bot-message structured-response">
+                <div class="response-section">
+                    <div class="response-header">👋 Welcome!</div>
+                    <p>I'm your AI Interview Assistant. I can help you with:</p>
+                    <ul>
+                        <li>Technical interview preparation</li>
+                        <li>Behavioral question practice</li>
+                        <li>Industry-specific guidance</li>
+                        <li>Interview feedback and tips</li>
+                    </ul>
+                </div>
+                <div class="response-section">
+                    <div class="response-header">💡 Try asking about:</div>
+                    <ul>
+                        <li>Technical skills assessment</li>
+                        <li>Common interview questions</li>
+                        <li>Best practices for interviews</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typingIndicator">AI is typing...</div>
+        
+        <div class="input-container">
+            <input type="text" id="userInput" placeholder="Type your message or select a sample question...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let conversationHistory = [];
+
+        function askQuestion(question) {
+            document.getElementById('userInput').value = question;
+            sendMessage();
+        }
+
+        function formatResponse(response) {
+            // Check if response contains sections
+            if (response.includes("Technical Analysis:") || 
+                response.includes("Experience:") || 
+                response.includes("Recommendation:")) {
+                return `<div class="structured-response">
+                    ${response.split('\n').map(line => {
+                        if (line.includes(':')) {
+                            const [header, ...content] = line.split(':');
+                            return `<div class="response-section">
+                                <div class="response-header">${header}:</div>
+                                <p>${content.join(':')}</p>
+                            </div>`;
+                        }
+                        return `<p>${line}</p>`;
+                    }).join('')}
+                </div>`;
+            }
+            return response;
+        }
+
+        function addMessage(message, sender) {
+            const chatBox = document.getElementById('chatBox');
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', `${sender}-message`);
+            
+            // Format bot responses
+            if (sender === 'bot') {
+                messageDiv.innerHTML = formatResponse(message);
+            } else {
+                messageDiv.textContent = message;
+            }
+            
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const userInput = document.getElementById('userInput');
+            const message = userInput.value.trim();
+            
+            if (!message) return;
+
+            // Add user message to chat
+            addMessage(message, 'user');
+            userInput.value = '';
+
+            // Show typing indicator
+            document.getElementById('typingIndicator').style.display = 'block';
+
+            try {
+                // Send message to server (updated URL)
+                const response = await fetch(`http://localhost:3001/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message
+                    })
+                });
+
+                const data = await response.json();
+
+                // Hide typing indicator
+                document.getElementById('typingIndicator').style.display = 'none';
+
+                if (data.error) {
+                    addMessage('Sorry, there was an error processing your message.', 'bot');
+                } else {
+                    // Add bot response to chat
+                    addMessage(data.response, 'bot');
+                    
+                    // Update conversation history
+                    conversationHistory.push(
+                        { role: 'user', content: message },
+                        { role: 'bot', content: data.response }
+                    );
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('typingIndicator').style.display = 'none';
+                addMessage('Sorry, there was an error connecting to the server.', 'bot');
+            }
+        }
+
+        // Allow sending with Enter key
+        document.getElementById('userInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

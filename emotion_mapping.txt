@@ -1,0 +1,9 @@
+emotion_map = {
+    "happy": "confidence",           # FER "happy" maps to "confidence"
+    "sad": "empathy",                # FER "sad" maps to "empathy"
+    "angry": "decisiveness",         # FER "angry" maps to "decisiveness"
+    "surprise": "creativity",        # FER "surprise" maps to "creativity"
+    "disgust": "attention_to_detail",# FER "disgust" maps to "attention_to_detail"
+    "fear": "vigilance",             # FER "fear" maps to "vigilance"
+    "neutral": "stability"           # FER "neutral" maps to "stability"
+}

@@ -1,0 +1,11 @@
+flask
+grpcio
+nvidia-riva-client
+transformers
+torch
+textblob
+waitress
+accelerate
+opencv-python
+numpy
+gtts 

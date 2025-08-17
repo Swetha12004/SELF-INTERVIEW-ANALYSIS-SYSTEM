@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Detection | InsightHire</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: #f6f9fc;
+            padding-top: 80px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .page-title {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .page-title h1 {
+            font-size: 2.8em;
+            background: linear-gradient(120deg, #2C3E50, #3498DB);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+
+        .page-title p {
+            color: #666;
+            font-size: 1.1em;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .detection-sections {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 40px;
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .section-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .section-card h2 {
+            color: #2C3E50;
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-card h2 i {
+            color: #3498DB;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border-radius: 30px;
+            border: none;
+            font-weight: 600;
+            font-size: 1em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(120deg, #3498DB, #2C3E50);
+            color: white;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn-secondary {
+            background: #e1e8ed;
+            color: #2C3E50;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        #liveFeed {
+            width: 100%;
+            border-radius: 15px;
+            margin: 20px 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-box {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .result-box h3 {
+            color: #2C3E50;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .result-box p {
+            color: #666;
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+
+        .file-upload {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        .file-upload input[type="file"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px dashed #3498DB;
+            border-radius: 12px;
+            background: #f8fafc;
+            cursor: pointer;
+        }
+
+        .file-upload::before {
+            content: 'Choose Video File';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            color: #3498DB;
+            font-weight: 600;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .detection-sections {
+                grid-template-columns: 1fr;
+            }
+
+            .page-title h1 {
+                font-size: 2.2em;
+            }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading i {
+            color: #3498DB;
+            font-size: 2em;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .video-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        #videoElement {
+            width: 100%;
+            max-width: 640px;
+            border: 3px solid #4CAF50;
+            border-radius: 5px;
+        }
+        .analysis-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            margin: 20px 0;
+            height: 300px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:disabled {
+            background: #cccccc;
+        }
+        .nav-bar {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .nav-bar a {
+            padding: 10px 20px;
+            background: #2196F3;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        .file-upload {
+            border: 2px dashed #3498DB;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            background: #f8fafc;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .file-upload input[type="file"] {
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+
+        .upload-text {
+            color: #3498DB;
+            font-size: 1.1em;
+            margin: 0;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .skills-list, .experience-details, .job-matches-list {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        #resumeResults {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-bar">
+        <a href="/">Home</a>
+        <a href="/speech">Speech Analysis</a>
+        <a href="/resume">Resume Analysis</a>
+    </div>
+
+    <div class="container">
+        <div class="page-title">
+            <h1>AI-Powered Emotion Analysis</h1>
+            <p>Our advanced emotion detection system analyzes facial expressions to suggest optimal job roles based on personality traits.</p>
+        </div>
+
+        <div class="detection-sections">
+            <div class="section-card" style="grid-column: 1 / -1; background: linear-gradient(to right, #f8fafc, #ffffff);">
+                <h2><i class="fas fa-file-alt"></i>Resume Analysis</h2>
+                <div class="file-upload">
+                    <input type="file" id="resumeFile" accept=".pdf,.doc,.docx" />
+                    <p class="upload-text">Drag & drop your resume or click to browse</p>
+                </div>
+                <div class="control-buttons">
+                    <button class="btn btn-primary" id="analyzeResumeBtn">
+                    <i class="fas fa-search"></i>Analyze Resume
+                </button>
+                </div>
+                <div class="result-box" id="resumeResults">
+                    <h3>Resume Analysis Results</h3>
+                    <div class="results-grid">
+                        <div id="technicalSkills">
+                            <h4>Technical Skills</h4>
+                            <div class="skills-list"></div>
+                        </div>
+                        <div id="experienceLevel">
+                            <h4>Experience Level</h4>
+                            <div class="experience-details"></div>
+                        </div>
+                        <div id="jobMatches">
+                            <h4>Recommended Roles</h4>
+                            <div class="job-matches-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <h2><i class="fas fa-camera"></i>Live Emotion Detection</h2>
+                <div class="control-buttons">
+                    <button id="startLive" class="btn btn-primary">
+                        <i class="fas fa-play"></i>Start Detection
+                    </button>
+                    <button id="stopLive" class="btn btn-secondary">
+                        <i class="fas fa-stop"></i>Stop Detection
+                    </button>
+                </div>
+                <img id="liveFeed" src="" style="display:none;">
+                <div class="result-box">
+                    <h3>Analysis Results</h3>
+                    <p id="liveEmotion"></p>
+                    <p id="liveJobs"></p>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <h2><i class="fas fa-video"></i>Video Analysis</h2>
+                <div class="file-upload">
+                    <input type="file" id="videoFile" accept="video/*">
+                </div>
+                <button id="uploadVideo" class="btn btn-primary">
+                    <i class="fas fa-upload"></i>Analyze Video
+                </button>
+                <div class="loading">
+                    <i class="fas fa-spinner"></i>
+                </div>
+                <div class="result-box">
+                    <h3>Analysis Results</h3>
+                    <p id="videoEmotion"></p>
+                    <p id="videoJobs"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="video-section">
+            <h2>Live Video Feed</h2>
+            <video id="videoElement" autoplay playsinline></video>
+            <div>
+                <button id="startButton">Start Analysis</button>
+                <button id="stopButton" disabled>Stop Analysis</button>
+            </div>
+        </div>
+
+        <div class="analysis-section">
+            <h2>Real-time Emotion Analysis</h2>
+            <div class="chart-container">
+                <canvas id="emotionChart"></canvas>
+            </div>
+            <div id="currentEmotion"></div>
+        </div>
+
+        <div class="analysis-section">
+            <h2>Job Suitability Analysis</h2>
+            <div class="chart-container">
+                <canvas id="jobMatchChart"></canvas>
+            </div>
+        </div>
+
+        <div class="analysis-section">
+            <h2>Analysis Results</h2>
+            <div id="analysisResults"></div>
+        </div>
+    </div>
+
+    <script>
+        $("#startLive").click(function() {
+            $("#liveFeed").attr("src", "/live_feed").show();
+            $.post("/start_live");
+            $(this).prop('disabled', true);
+            $("#stopLive").prop('disabled', false);
+        });
+
+        $("#stopLive").click(function() {
+            $(this).prop('disabled', true);
+            $("#startLive").prop('disabled', false);
+            $.post("/stop_live", function(data) {
+                if(data.error) {
+                    $("#liveEmotion").text(data.error);
+                } else {
+                    $("#liveEmotion").text("Detected Emotion: " + data.emotion);
+                    $("#liveJobs").text("Suggested Jobs: " + data.job_roles.join(", "));
+                }
+            });
+        });
+
+        $("#uploadVideo").click(function() {
+            var file = $("#videoFile")[0].files[0];
+            if (!file) {
+                alert("Please select a video file first.");
+                return;
+            }
+
+            var formData = new FormData();
+            formData.append("video", file);
+
+            $(".loading").show();
+            $(this).prop('disabled', true);
+
+            $.ajax({
+                url: "/process_video",
+                type: "POST",
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    if(data.error) {
+                        $("#videoEmotion").text(data.error);
+                    } else {
+                        $("#videoEmotion").text("Detected Emotion: " + data.emotion);
+                        $("#videoJobs").text("Suggested Jobs: " + data.job_roles.join(", "));
+                    }
+                },
+                complete: function() {
+                    $(".loading").hide();
+                    $("#uploadVideo").prop('disabled', false);
+                }
+            });
+        });
+
+        document.getElementById('analyzeResumeBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('resumeFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a resume file first');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('resume', file);
+
+            try {
+                const response = await fetch('/analyze_resume', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Error analyzing resume: ' + data.error);
+                    return;
+                }
+
+                // Show results container
+                document.getElementById('resumeResults').style.display = 'block';
+
+                // Update Technical Skills
+                const skillsList = document.querySelector('.skills-list');
+                skillsList.innerHTML = data.technical_skills_found.length > 0 
+                    ? data.technical_skills_found.map(skill => `<div class="skill-tag">${skill}</div>`).join('')
+                    : '<p>No technical skills detected</p>';
+
+                // Update Experience Level
+                const expDetails = document.querySelector('.experience-details');
+                expDetails.innerHTML = `
+                    <p><strong>Level:</strong> ${data.experience_level.level}</p>
+                    <p><strong>Years:</strong> ${data.experience_level.years}</p>
+                    <p><strong>Quality Score:</strong> ${Math.round(data.quality_score)}%</p>
+                `;
+
+                // Update Job Matches
+                const jobList = document.querySelector('.job-matches-list');
+                jobList.innerHTML = data.job_matches.length > 0
+                    ? data.job_matches.map(job => `<div class="job-match">${job}</div>`).join('')
+                    : '<p>No job matches found</p>';
+
+                console.log('Sending file:', file);
+                console.log('Response:', data);
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to analyze resume');
+            }
+        });
+
+        // Add drag and drop functionality
+        const dropZone = document.querySelector('.file-upload');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('highlight');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('highlight');
+        }
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            document.getElementById('resumeFile').files = files;
+        }
+
+        let emotionChart, jobMatchChart;
+        
+        function initializeCharts() {
+            const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+            emotionChart = new Chart(emotionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#FF6384',
+                            '#36A2EB',
+                            '#FFCE56',
+                            '#4BC0C0',
+                            '#9966FF'
+                        ]
+                    }]
+                }
+            });
+
+            const jobCtx = document.getElementById('jobMatchChart').getContext('2d');
+            jobMatchChart = new Chart(jobCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Job Match Percentage',
+                        data: [],
+                        backgroundColor: '#4CAF50'
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('startButton').onclick = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                document.getElementById('videoElement').srcObject = stream;
+                
+                const response = await fetch('/start_recording', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    document.getElementById('startButton').disabled = true;
+                    document.getElementById('stopButton').disabled = false;
+                    startAnalysis();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Please enable camera access');
+            }
+        };
+
+        document.getElementById('stopButton').onclick = async () => {
+            try {
+                const response = await fetch('/stop_recording');
+                const data = await response.json();
+                
+                updateResults(data);
+                
+                document.getElementById('startButton').disabled = false;
+                document.getElementById('stopButton').disabled = true;
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        };
+
+        function startAnalysis() {
+            // Update every second
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/analyze_frame');
+                    const data = await response.json();
+                    updateCharts(data);
+                } catch (error) {
+                    console.error('Analysis error:', error);
+                }
+            }, 1000);
+        }
+
+        function updateCharts(data) {
+            // Update emotion chart
+            emotionChart.data.labels = Object.keys(data.emotion_percentages.facial);
+            emotionChart.data.datasets[0].data = Object.values(data.emotion_percentages.facial);
+            emotionChart.update();
+
+            // Update job match chart
+            jobMatchChart.data.labels = Object.keys(data.job_suitability.job_scores);
+            jobMatchChart.data.datasets[0].data = Object.values(data.job_suitability.job_scores);
+            jobMatchChart.update();
+
+            // Update current emotion
+            document.getElementById('currentEmotion').textContent = 
+                `Current Emotion: ${data.most_common_emotions.facial}`;
+        }
+
+        function updateResults(data) {
+            document.getElementById('analysisResults').innerHTML = `
+                <h3>Final Analysis:</h3>
+                <p>Dominant Emotion: ${data.most_common_emotions.facial}</p>
+                <p>Best Job Matches:</p>
+                ${Object.entries(data.job_suitability.job_scores)
+                    .sort(([,a], [,b]) => b - a)
+                    .map(([job, score]) => `
+                        <div>
+                            <p>${job}: ${score.toFixed(1)}%</p>
+                        </div>
+                    `).join('')}
+            `;
+        }
+
+        document.addEventListener('DOMContentLoaded', initializeCharts);
+    </script>
+</body>
+</html> 

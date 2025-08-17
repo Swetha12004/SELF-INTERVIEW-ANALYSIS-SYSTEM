@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Technical Interview</title>
+    <style>
+        .container {
+            display: flex;
+            width: 90%;
+            margin: 20px auto;
+            gap: 20px;
+        }
+        .video-container {
+            width: 40%;
+        }
+        #videoElement {
+            width: 100%;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            background-color: #ddd;
+        }
+        .chat-section {
+            width: 60%;
+        }
+        .chat-container {
+            width: 100%;
+            padding: 20px;
+            border: 1px solid #ccc;
+            height: 400px;
+            overflow-y: auto;
+        }
+        .message {
+            margin: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .ai-message { 
+            background-color: #e3f2fd;
+            margin-right: 20%;
+        }
+        .user-message { 
+            background-color: #f5f5f5;
+            margin-left: 20%;
+        }
+        .input-container {
+            width: 100%;
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        #userInput { 
+            flex-grow: 1; 
+            padding: 10px; 
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .status-indicator {
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin: 5px;
+            font-size: 12px;
+        }
+        .recording { background-color: #ffebee; color: red; }
+        #analysisResults {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        .recording-indicator {
+            background-color: #ff4444;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .controls {
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">AI Technical Interview</h1>
+    
+    <div class="container">
+        <div class="video-container">
+            <video id="videoElement" autoplay playsinline></video>
+            <div id="analysisResults"></div>
+        </div>
+        
+        <div class="chat-section">
+            <div class="chat-container" id="chatContainer"></div>
+            <div class="input-container">
+                <input type="text" id="userInput" placeholder="Type your response here...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+            <div class="controls">
+                <button id="startButton" onclick="startListening()">Start Speaking</button>
+                <button id="stopButton" onclick="stopListening()" disabled>Stop</button>
+                <span id="recordingIndicator" class="recording-indicator">Recording...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let conversationId = null;
+        let videoStream = null;
+        let analysisInterval = null;
+        let recognition = null;
+        let isListening = false;
+
+        // Initialize speech recognition
+        function initializeSpeechRecognition() {
+            window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                const result = event.results[event.results.length - 1];
+                if (result.isFinal) {
+                    const text = result.item(0).transcript;
+                    document.getElementById('userInput').value = text;
+                    if (text.trim()) {
+                        sendMessage(text);
+                    }
+                }
+            };
+
+            recognition.onend = () => {
+                if (isListening) {
+                    recognition.start();
+                }
+            };
+        }
+
+        function startListening() {
+            isListening = true;
+            document.getElementById('startButton').disabled = true;
+            document.getElementById('stopButton').disabled = false;
+            document.getElementById('recordingIndicator').style.display = 'inline';
+            recognition.start();
+        }
+
+        function stopListening() {
+            isListening = false;
+            document.getElementById('startButton').disabled = false;
+            document.getElementById('stopButton').disabled = true;
+            document.getElementById('recordingIndicator').style.display = 'none';
+            recognition.stop();
+        }
+
+        // Initialize when page loads
+        window.onload = async function() {
+            try {
+                // Initialize speech recognition
+                initializeSpeechRecognition();
+
+                // Start camera
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true,
+                    audio: true
+                });
+                videoStream = stream;
+                document.getElementById('videoElement').srcObject = stream;
+                
+                // Start interview
+                const response = await fetch('/start_interview', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                conversationId = data.conversation_id;
+                addMessage(data.message, 'ai');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Please enable camera and microphone access');
+            }
+        };
+
+        function startAnalysis() {
+            const video = document.getElementById('videoElement');
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            analysisInterval = setInterval(() => {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    context.drawImage(video, 0, 0);
+                    
+                    // Send frame for analysis
+                    canvas.toBlob(async (blob) => {
+                        const formData = new FormData();
+                        formData.append('image', blob);
+                        formData.append('conversation_id', conversationId);
+                        
+                        try {
+                            const response = await fetch('/analyze_frame', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const data = await response.json();
+                            updateAnalysisResults(data);
+                        } catch (error) {
+                            console.error('Analysis error:', error);
+                        }
+                    }, 'image/jpeg');
+                }
+            }, 1000); // Analyze every second
+        }
+
+        function updateAnalysisResults(data) {
+            const resultsDiv = document.getElementById('analysisResults');
+            resultsDiv.innerHTML = `
+                <div>Attention: ${data.attention_level || 'Analyzing...'}</div>
+                <div>Confidence: ${data.confidence_level || 'Analyzing...'}</div>
+            `;
+        }
+
+        function addMessage(message, sender) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender === 'ai' ? 'ai-message' : 'user-message');
+            messageDiv.textContent = message;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Text-to-speech function
+        function speakText(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1;
+            utterance.pitch = 1;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        async function sendMessage(text = null) {
+            const userInput = text || document.getElementById('userInput').value;
+            if (!userInput.trim()) return;
+
+            addMessage(userInput, 'user');
+            document.getElementById('userInput').value = '';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: userInput,
+                        conversation_id: conversationId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    addMessage(`Error: ${data.error}`, 'ai');
+                    speakText(`Error: ${data.error}`);
+                    return;
+                }
+
+                addMessage(data.response, 'ai');
+                speakText(data.response);
+
+                if (data.is_final_report) {
+                    document.getElementById('userInput').disabled = true;
+                    document.getElementById('startButton').disabled = true;
+                    document.getElementById('stopButton').disabled = true;
+                    stopAnalysis();
+                    stopListening();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Sorry, there was an error processing your response.', 'ai');
+            }
+        }
+
+        function stopAnalysis() {
+            if (analysisInterval) {
+                clearInterval(analysisInterval);
+            }
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        // Cleanup on page unload
+        window.onbeforeunload = function() {
+            stopAnalysis();
+        };
+
+        // Allow sending with Enter key
+        document.getElementById('userInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
+

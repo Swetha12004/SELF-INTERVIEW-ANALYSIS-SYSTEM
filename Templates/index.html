@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emotion Detection System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .video-section, .analysis-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #videoElement {
+            width: 100%;
+            border: 3px solid #4CAF50;
+            border-radius: 5px;
+        }
+        .emotion-display {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 5px;
+        }
+        .chart-container {
+            margin-top: 20px;
+            height: 300px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:disabled {
+            background: #cccccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="video-section">
+            <h2>Live Video Feed</h2>
+            <img id="videoElement" src="{{ url_for('video_feed') }}" style="width: 100%; max-width: 640px;">
+            <div class="controls">
+                <button id="startButton" onclick="startRecording()">Start Analysis</button>
+                <button id="stopButton" onclick="stopRecording()" disabled>Stop Analysis</button>
+            </div>
+            <div class="emotion-display" id="currentEmotion">
+                Current Emotion: Analyzing...
+            </div>
+        </div>
+        
+        <div class="analysis-section">
+            <h2>Emotion Analysis</h2>
+            <div class="chart-container">
+                <canvas id="emotionChart"></canvas>
+            </div>
+            <div id="analysisResults"></div>
+        </div>
+    </div>
+    
+    <script>
+        let emotionChart;
+        let isRecording = false;
+        let recordingTimer;
+        const MAX_RECORDING_TIME = 180; // 3 minutes in seconds
+
+        // Initialize chart
+        function initializeChart() {
+            const ctx = document.getElementById('emotionChart').getContext('2d');
+            emotionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Happy', 'Sad', 'Angry', 'Neutral', 'Surprised', 'Fear', 'Disgust'],
+                    datasets: [{
+                        label: 'Emotion Distribution',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            '#4CAF50', // Happy
+                            '#2196F3', // Sad
+                            '#f44336', // Angry
+                            '#9e9e9e', // Neutral
+                            '#ff9800', // Surprised
+                            '#9c27b0', // Fear
+                            '#795548'  // Disgust
+                        ]
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        async function startRecording() {
+            try {
+                const response = await fetch('/start_recording', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('startButton').disabled = true;
+                    document.getElementById('stopButton').disabled = false;
+                    document.getElementById('videoElement').style.display = 'block';
+                    startEmotionAnalysis();
+                    
+                    // Start timer
+                    let timeLeft = MAX_RECORDING_TIME;
+                    recordingTimer = setInterval(() => {
+                        timeLeft--;
+                        document.getElementById('currentEmotion').textContent = 
+                            `Time remaining: ${timeLeft}s\n${document.getElementById('currentEmotion').textContent}`;
+                        
+                        if (timeLeft <= 0) {
+                            stopRecording();
+                        }
+                    }, 1000);
+                    
+                } else {
+                    const error = await response.json();
+                    console.error('Start recording error:', error);
+                    alert('Failed to start recording: ' + (error.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to start recording');
+            }
+        }
+
+        async function stopRecording() {
+            try {
+                // Clear timer
+                if (recordingTimer) {
+                    clearInterval(recordingTimer);
+                    recordingTimer = null;
+                }
+                
+                stopEmotionAnalysis();
+                const response = await fetch('/stop_recording');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Stop recording error:', data.error);
+                    return;
+                }
+                
+                updateResults(data);
+                
+                document.getElementById('startButton').disabled = false;
+                document.getElementById('stopButton').disabled = true;
+                document.getElementById('videoElement').style.display = 'none';
+                
+                // Show recording completion message
+                if (data.recording_info) {
+                    alert(data.recording_info.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function startEmotionAnalysis() {
+            const analysisInterval = setInterval(async () => {
+                if (!document.getElementById('videoElement').style.display === 'none') {
+                    try {
+                        const response = await fetch('/analyze_emotions');
+                        const data = await response.json();
+                        
+                        if (data.error) {
+                            console.error('Emotion analysis error:', data.error);
+                            return;
+                        }
+                        
+                        const emotion = data.emotion || 'neutral';
+                        document.getElementById('currentEmotion').textContent = 
+                            `Current Emotion: ${emotion} (${Math.round(data.confidence)}%)`;
+                            
+                        updateChart(emotion);
+                    } catch (error) {
+                        console.error('Error:', error);
+                    }
+                }
+            }, 1000);
+
+            // Store interval ID for cleanup
+            window.emotionAnalysisInterval = analysisInterval;
+        }
+
+        function stopEmotionAnalysis() {
+            if (window.emotionAnalysisInterval) {
+                clearInterval(window.emotionAnalysisInterval);
+            }
+        }
+
+        function updateChart(emotion) {
+            if (!emotion) return;
+            
+            const emotions = ['happy', 'sad', 'angry', 'neutral', 'surprise', 'fear', 'disgust'];
+            const index = emotions.indexOf(emotion.toLowerCase());
+            
+            if (index !== -1) {
+                emotionChart.data.datasets[0].data[index]++;
+                emotionChart.update();
+            }
+        }
+
+        function updateResults(data) {
+            document.getElementById('analysisResults').innerHTML = `
+                <h3>Analysis Results:</h3>
+                <p>Video Emotion: ${data.video_emotion}</p>
+                <p>Audio Emotion: ${data.audio_emotion}</p>
+            `;
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeChart);
+    </script>
+</body>
+</html>

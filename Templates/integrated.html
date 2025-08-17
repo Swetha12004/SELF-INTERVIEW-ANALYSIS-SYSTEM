@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background: #f6f9fc;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        #videoElement {
+            width: 100%;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            background: linear-gradient(120deg, #3498DB, #2C3E50);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .results-section {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .chart-container {
+            height: 300px;
+            margin: 20px 0;
+        }
+
+        #currentEmotion {
+            font-size: 1.2em;
+            margin: 10px 0;
+            color: #2C3E50;
+        }
+
+        .recording-indicator {
+            color: red;
+            display: none;
+        }
+
+        .analysis-summary {
+            padding: 20px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .emotion-distribution, .job-scores, .factors {
+            margin: 10px 0;
+        }
+
+        .emotion-item, .job-score-item, .factor-item {
+            margin: 5px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .progress-bar {
+            flex-grow: 1;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s ease;
+        }
+
+        .recommendation {
+            padding: 10px;
+            background: #e8f5e9;
+            border-left: 4px solid #4CAF50;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="section-card">
+            <h2>Video Analysis</h2>
+            <video id="videoElement" autoplay playsinline></video>
+            <div class="controls">
+                <button class="btn" id="startButton">Start Analysis</button>
+                <button class="btn" id="stopButton" disabled>Stop Analysis</button>
+                <span id="recordingIndicator" class="recording-indicator">Recording...</span>
+            </div>
+            <div id="currentEmotion"></div>
+        </div>
+
+        <div class="section-card">
+            <h2>Analysis Results</h2>
+            <div class="chart-container">
+                <canvas id="emotionChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="jobMatchChart"></canvas>
+            </div>
+            <div id="analysisResults" class="results-section"></div>
+        </div>
+    </div>
+
+    <script>
+        let emotionChart, jobMatchChart;
+        let isRecording = false;
+        const MIN_RECORDING_TIME = 10;  // Minimum recording time in seconds
+
+        function initializeCharts() {
+            const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+            emotionChart = new Chart(emotionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#FF6384',
+                            '#36A2EB',
+                            '#FFCE56',
+                            '#4BC0C0',
+                            '#9966FF'
+                        ]
+                    }]
+                }
+            });
+
+            const jobCtx = document.getElementById('jobMatchChart').getContext('2d');
+            jobMatchChart = new Chart(jobCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Job Match Percentage',
+                        data: [],
+                        backgroundColor: '#4CAF50'
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('startButton').onclick = async () => {
+            try {
+                // Request both video and audio permissions
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true,
+                    audio: true  // Add audio permission
+                });
+                
+                // Display the video stream
+                const videoElement = document.getElementById('videoElement');
+                videoElement.srcObject = stream;
+                
+                // Start the analysis
+                const response = await fetch('/start_analysis', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                isRecording = true;
+                document.getElementById('startButton').disabled = true;
+                document.getElementById('stopButton').disabled = false;
+                document.getElementById('recordingIndicator').style.display = 'inline';
+                startAnalysis();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Please enable camera and microphone access: ' + error.message);
+            }
+        };
+
+        document.getElementById('stopButton').onclick = async () => {
+            try {
+                const response = await fetch('/stop_analysis', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.status === 400) {
+                    // Show error for minimum recording time
+                    alert(data.error);
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Analysis failed');
+                }
+                
+                updateResults(data);
+                
+                isRecording = false;
+                document.getElementById('startButton').disabled = false;
+                document.getElementById('stopButton').disabled = true;
+                document.getElementById('recordingIndicator').style.display = 'none';
+                
+                // Stop video stream
+                const videoElement = document.getElementById('videoElement');
+                if (videoElement.srcObject) {
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                }
+                
+                // Show recording duration
+                const duration = Math.round(data.recording_time);
+                document.getElementById('analysisResults').innerHTML += `
+                    <div class="section">
+                        <h4>Recording Information</h4>
+                        <p>Duration: ${duration} seconds</p>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while stopping the analysis');
+            }
+        };
+
+        function startAnalysis() {
+            const videoFeed = document.getElementById('videoElement');
+            videoFeed.src = '/video_feed';
+            
+            let elapsedTime = 0;
+            const timerDisplay = document.createElement('div');
+            timerDisplay.id = 'timerDisplay';
+            timerDisplay.style.fontSize = '1.2em';
+            timerDisplay.style.margin = '10px 0';
+            document.getElementById('currentEmotion').parentNode.insertBefore(timerDisplay, document.getElementById('currentEmotion'));
+            
+            // Update timer every second
+            const timer = setInterval(() => {
+                if (!isRecording) {
+                    clearInterval(timer);
+                    return;
+                }
+                
+                elapsedTime++;
+                timerDisplay.textContent = `Recording Time: ${elapsedTime} seconds`;
+                
+                // Show minimum time warning
+                if (elapsedTime < MIN_RECORDING_TIME) {
+                    timerDisplay.style.color = 'red';
+                    timerDisplay.textContent += ` (Minimum ${MIN_RECORDING_TIME} seconds required)`;
+                } else {
+                    timerDisplay.style.color = 'green';
+                }
+            }, 1000);
+            
+            // Start the analysis interval
+            const analysisInterval = setInterval(async () => {
+                if (!isRecording) {
+                    clearInterval(analysisInterval);
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/analyze_frame');
+                    if (!response.ok) throw new Error('Analysis failed');
+                    const data = await response.json();
+                    updateCharts(data);
+                } catch (error) {
+                    console.error('Analysis error:', error);
+                }
+            }, 1000);
+        }
+
+        function updateCharts(data) {
+            if (data.emotion_percentages) {
+                emotionChart.data.labels = Object.keys(data.emotion_percentages);
+                emotionChart.data.datasets[0].data = Object.values(data.emotion_percentages);
+                emotionChart.update();
+            }
+
+            if (data.job_suitability) {
+                jobMatchChart.data.labels = Object.keys(data.job_suitability);
+                jobMatchChart.data.datasets[0].data = Object.values(data.job_suitability);
+                jobMatchChart.update();
+            }
+
+            if (data.current_emotion) {
+                document.getElementById('currentEmotion').textContent = 
+                    `Current Emotion: ${data.current_emotion}`;
+            }
+        }
+
+        function updateResults(data) {
+            const resultsDiv = document.getElementById('analysisResults');
+            
+            // Create a formatted results display
+            resultsDiv.innerHTML = `
+                <div class="analysis-summary">
+                    <h3>Interview Analysis Summary</h3>
+                    
+                    <div class="section">
+                        <h4>Facial Expression Analysis</h4>
+                        <p>Dominant Emotion: ${data.facial_analysis.dominant_emotion}</p>
+                        <div class="emotion-distribution">
+                            ${Object.entries(data.facial_analysis.emotion_distribution)
+                                .map(([emotion, count]) => 
+                                    `<div class="emotion-item">
+                                        <span>${emotion}</span>: 
+                                        <span>${((count/Object.values(data.facial_analysis.emotion_distribution)
+                                            .reduce((a,b) => a+b)) * 100).toFixed(1)}%</span>
+                                    </div>`
+                                ).join('')}
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h4>Voice Analysis</h4>
+                        <p>Dominant Emotion: ${data.voice_analysis.dominant_emotion}</p>
+                        <p>Speech Content: ${data.voice_analysis.speech_text}</p>
+                        <div class="emotion-distribution">
+                            ${Object.entries(data.voice_analysis.emotion_distribution)
+                                .map(([emotion, count]) => 
+                                    `<div class="emotion-item">
+                                        <span>${emotion}</span>: 
+                                        <span>${((count/Object.values(data.voice_analysis.emotion_distribution)
+                                            .reduce((a,b) => a+b)) * 100).toFixed(1)}%</span>
+                                    </div>`
+                                ).join('')}
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h4>Job Suitability Analysis</h4>
+                        <p class="recommendation">${data.job_suitability.recommendation.explanation}</p>
+                        <div class="job-scores">
+                            ${Object.entries(data.job_suitability.best_matches)
+                                .sort(([,a], [,b]) => b-a)
+                                .map(([job, score]) => 
+                                    `<div class="job-score-item">
+                                        <span>${job}</span>
+                                        <div class="progress-bar">
+                                            <div class="progress" style="width: ${score}%"></div>
+                                        </div>
+                                        <span>${score}%</span>
+                                    </div>`
+                                ).join('')}
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h4>Overall Performance</h4>
+                        <p>Confidence Score: ${data.overall_confidence.score}%</p>
+                        <div class="factors">
+                            ${Object.entries(data.overall_confidence.factors)
+                                .map(([factor, rating]) => 
+                                    `<div class="factor-item">
+                                        <span>${factor.replace('_', ' ')}</span>: ${rating}
+                                    </div>`
+                                ).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        document.addEventListener('DOMContentLoaded', initializeCharts);
+    </script>
+</body>
+</html> 

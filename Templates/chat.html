@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Prep Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            text-align: center;
+        }
+        .chat-container {
+            width: 40%;
+            margin: 20px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .chat-box {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .chat-message {
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+        }
+        .bot-message {
+            background-color: #ddd;
+            align-self: flex-start;
+        }
+        .input-container {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        input {
+            width: 60%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .emotion-analysis {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .emotion-analysis ul {
+            list-style: none;
+            padding: 0;
+        }
+        .emotion-analysis li {
+            margin: 5px 0;
+            padding: 5px;
+            background: white;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Interview Prep Chatbot</h2>
+    <div class="chat-container">
+        <div class="emotion-analysis">
+            <h3>Current Emotional State</h3>
+            <div id="emotionResults"></div>
+        </div>
+        <div class="chat-box" id="chatBox">
+            <div class="chat-message bot-message">Hello! I'm here to help you prepare for your interview. What role are you interviewing for?</div>
+        </div>
+    </div>
+
+    <div class="input-container">
+        <input type="text" id="userInput" placeholder="Type your message...">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        async function startRecording() {
+            try {
+                const response = await fetch("/start_recording", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.status !== "success") {
+                    throw new Error(data.error || "Failed to start recording");
+                }
+            } catch (error) {
+                console.error("Error starting recording:", error);
+                throw error;
+            }
+        }
+
+        async function sendMessage() {
+            const userInput = document.getElementById("userInput").value;
+            if (!userInput.trim()) return;
+
+            // Clear input field
+            document.getElementById("userInput").value = "";
+
+            // Add user message to chat
+            addMessageToChat(userInput, 'user');
+
+            try {
+                // Start recording
+                await startRecording();
+
+                // Get chatbot response
+                const chatResponse = await fetch("/chat_message", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: userInput })
+                });
+
+                const chatData = await chatResponse.json();
+                
+                // Get emotion analysis
+                const emotionResponse = await fetch("/stop_recording");
+                const emotionData = await emotionResponse.json();
+                
+                // Update emotion results
+                const emotionDiv = document.getElementById("emotionResults");
+                emotionDiv.innerHTML = `
+                    <p>Facial Emotion: ${emotionData.most_common_emotions.facial}</p>
+                    <p>Voice Emotion: ${emotionData.most_common_emotions.voice}</p>
+                    <h4>Job Suitability:</h4>
+                    <ul>
+                        ${Object.entries(emotionData.job_suitability.job_scores)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([job, score]) => `<li>${job}: ${score.toFixed(1)}%</li>`)
+                            .join('')}
+                    </ul>
+                `;
+
+                // Add bot response to chat
+                addMessageToChat(chatData.response, 'bot');
+
+            } catch (error) {
+                console.error("Error:", error);
+                addMessageToChat("Sorry, an error occurred. Please try again.", 'bot');
+            }
+        }
+
+        function addMessageToChat(message, type) {
+            const chatBox = document.getElementById("chatBox");
+            const messageDiv = document.createElement("div");
+            messageDiv.classList.add("chat-message", `${type}-message`);
+            messageDiv.textContent = message;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+    </script>
+
+</body>
+</html>
